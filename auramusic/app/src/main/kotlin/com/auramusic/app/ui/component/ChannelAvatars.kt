@@ -1,0 +1,226 @@
+/**
+ * Auramusic Project (C) 2026
+ * Licensed under GPL-3.0 | See git history for contributors
+ */
+
+package com.auramusic.app.ui.component
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import com.auramusic.innertube.CollaboratorResolver
+import com.auramusic.innertube.NewPipeExtractor
+import com.auramusic.innertube.YouTube
+import com.auramusic.innertube.models.Artist
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * Channel avatar URLs by channel id.
+ *
+ * A video's byline only carries the primary channel's avatar; credited co-channels arrive as
+ * a name and an id with no image. The avatar is looked up once per channel and remembered for
+ * the process - without this, every card and the channel picker would show a grey person
+ * glyph for the second channel.
+ */
+object ChannelAvatarStore {
+    // ConcurrentHashMap rejects null values, so "looked up, has no art" is stored as blank.
+    private val avatars = ConcurrentHashMap<String, String>()
+
+    suspend fun avatarFor(channelId: String): String? {
+        avatars[channelId]?.let { return it.ifBlank { null } }
+        val url = runCatching {
+            YouTube.youtubeChannel(channelId, params = null).getOrNull()?.avatarUrl
+        }.getOrNull().orEmpty()
+            .ifBlank {
+                // The Innertube channel page occasionally hands back no art at all;
+                // the extractor's channel page still carries it, so the credited
+                // avatar does not degrade into a letter glyph.
+                runCatching { NewPipeExtractor.fetchCommentAvatar(channelId) }
+                    .getOrNull()
+                    .orEmpty()
+            }
+        avatars[channelId] = url
+        return url.ifBlank { null }
+    }
+}
+
+/**
+ * Avatar for one credited channel. Uses [thumbnailUrl] when one was already fetched for this
+ * channel (the primary channel's art travels with the video), and looks it up otherwise.
+ */
+@Composable
+fun CreditedChannelAvatar(
+    channel: Artist,
+    thumbnailUrl: String?,
+    modifier: Modifier = Modifier,
+) {
+    val channelId = channel.id
+    val url by produceState<String?>(
+        initialValue = thumbnailUrl ?: channel.avatarUrl,
+        key1 = channelId,
+        key2 = thumbnailUrl,
+        key3 = channel.avatarUrl,
+    ) {
+        if (value == null && channelId != null) {
+            value = ChannelAvatarStore.avatarFor(channelId)
+        }
+    }
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!url.isNullOrBlank()) {
+            AsyncImage(
+                model = url,
+                contentDescription = channel.name,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            androidx.compose.material3.Text(
+                text = channel.name.firstOrNull()?.uppercase().orEmpty(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * The channel art for a video, showing up to two credited channels as an overlapping pair.
+ *
+ * A single-channel video keeps the plain round avatar it always had. A two-channel credit
+ * ("A & B") used to show only the first channel's art; the second channel now peeks out from
+ * behind it, so the card reads as a collaboration before it is even tapped.
+ */
+@Composable
+fun ChannelAvatarStack(
+    channels: List<Artist>,
+    primaryThumbnailUrl: String?,
+    size: Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (channels.size <= 1) {
+        CreditedChannelAvatar(
+            channel = channels.firstOrNull() ?: Artist("", null),
+            thumbnailUrl = primaryThumbnailUrl,
+            modifier = modifier
+                .size(size)
+                .clickable(onClick = onClick),
+        )
+        return
+    }
+    val overlap = size * 0.62f
+    Box(
+        modifier = modifier
+            .size(width = size + overlap, height = size)
+            .clickable(onClick = onClick),
+    ) {
+        CreditedChannelAvatar(
+            channel = channels[1],
+            thumbnailUrl = null,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .size(size)
+                .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+        )
+        CreditedChannelAvatar(
+            channel = channels[0],
+            thumbnailUrl = primaryThumbnailUrl,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .size(size)
+                .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+        )
+    }
+}
+
+/**
+ * The channels a video card should credit.
+ *
+ * A collaboration's byline usually only links the first channel, which left the stack
+ * one short and the chooser with nothing to choose. When the credit line looks like a
+ * collaboration, ask the cached owner-dialog resolver for the full list; plain
+ * single-channel videos are never asked, so a scrolling feed pays nothing extra.
+ */
+@Composable
+fun rememberVideoChannels(
+    videoId: String,
+    baseChannels: List<Artist>,
+    channelName: String,
+): List<Artist> {
+    if (baseChannels.size > 1) return baseChannels
+
+    // Results are published process-wide, so a collaboration looked up for one card
+    // repaints every other card showing the same video instead of each one resolving
+    // on its own - and the same answer survives navigating away and back.
+    val resolvedByVideo by resolvedChannels.collectAsState()
+    val alreadyResolved = resolvedByVideo[videoId]
+    LaunchedEffect(videoId, channelName) {
+        if (videoId.isBlank() || !channelName.hasCollaborationByline()) return@LaunchedEffect
+        CollaboratorResolver.resolve(videoId).takeIf { it.size > 1 }?.let { publishResolvedChannels(videoId, it) }
+    }
+    return alreadyResolved ?: baseChannels
+}
+
+/**
+ * Resolved collaborations, by video id. Shared so a lookup that happens anywhere - a
+ * card, the player, a prefetch - is visible everywhere at once.
+ */
+private val resolvedChannels = MutableStateFlow<Map<String, List<Artist>>>(emptyMap())
+
+private fun publishResolvedChannels(videoId: String, channels: List<Artist>) {
+    resolvedChannels.value = resolvedChannels.value + (videoId to channels)
+}
+
+/**
+ * Looks collaborations up ahead of time for rows the user is about to see.
+ *
+ * Without this a collaboration card draws a single avatar and then swaps to two a moment
+ * later, and a tap in between opens the wrong thing - the stack only shows one, so the
+ * tap navigates instead of offering the choice.
+ */
+fun prefetchVideoChannels(videos: List<Pair<String, String>>, scope: CoroutineScope) {
+    videos.forEach { (videoId, channelName) ->
+        if (videoId.isBlank() || !channelName.hasCollaborationByline()) return@forEach
+        if (resolvedChannels.value.containsKey(videoId)) return@forEach
+        scope.launch {
+            CollaboratorResolver.resolve(videoId).takeIf { it.size > 1 }?.let { publishResolvedChannels(videoId, it) }
+        }
+    }
+}
+
+/** Byline shapes that credit more than one channel: "A & B", "A x B", "A feat. B". */
+internal fun String.hasCollaborationByline(): Boolean {
+    val normalized = " ${trim().lowercase(Locale.US)} "
+    return normalized.contains(" & ") ||
+        normalized.contains(" x ") ||
+        normalized.contains(" feat. ") ||
+        normalized.contains(" ft. ")
+}

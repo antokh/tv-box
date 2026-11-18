@@ -1,0 +1,13 @@
+# Mi Box S MIBOX4 — extra packages the user chose to disable on 2026-11-18 (not on the old box's list).
+# Apply: bash tv-home/tools/debloat-mac.sh tv-home/examples/mi-box-s-mibox4/extra.txt   Undo: add --restore
+
+# A: ads and tracking
+tv.alphonso.alphonso_eula                      # Alphonso on-screen content recognition (ad targeting)
+com.google.android.tvrecommendations           # home-screen recommendation rows
+com.mitv.tvhome.atv                            # Xiaomi home-screen promo add-on
+
+# B: not needed
+com.google.android.videos                      # Play Movies
+com.mitv.videoplayer                           # Xiaomi video player
+com.mitv.download.service                      # Xiaomi download service
+com.xiaomi.mitv.updateservice                  # Xiaomi system updates (re-enable to update the box)

@@ -1,0 +1,234 @@
+package com.auramusic.app.tv
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.ContentProviderOperation
+import android.content.Intent
+import android.net.Uri
+import androidx.core.app.NotificationCompat
+import androidx.tvprovider.media.tv.PreviewChannel
+import androidx.tvprovider.media.tv.PreviewProgram
+import androidx.tvprovider.media.tv.TvContractCompat
+import com.auramusic.app.R
+import com.auramusic.app.models.PersistQueue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.io.File
+import java.io.ObjectInputStream
+
+/**
+ * Android TV Recommendations service.
+ *
+ * Publishes "Continue Listening" recommendations to the Google TV home screen,
+ * similar to how Netflix shows "Continue Watching".
+ */
+class TvRecommendationService : android.app.Service() {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override fun onBind(intent: Intent?) = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Create notification channel (required for Android 8+)
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(
+            NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "TV Recommendations",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Continue Listening recommendations for Google TV home screen"
+            }
+        )
+
+        // Android 14 requires startForeground() within 5 seconds
+        val notification: Notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("AuraMusic")
+            .setContentText("Updating recommendations...")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+        startForeground(NOTIFICATION_ID, notification)
+
+        scope.launch {
+            try {
+                updateRecommendations()
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to update TV recommendations")
+            } finally {
+                stopSelf()
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    private suspend fun updateRecommendations() {
+        val ctx = this
+
+        val persistQueue = readPersistQueue(ctx) ?: run {
+            Timber.d("No persisted queue for recommendations")
+            return
+        }
+
+        val queueTitle = persistQueue.title ?: "Continue Listening"
+        val currentIndex = persistQueue.mediaItemIndex.coerceIn(0, (persistQueue.items.lastIndex).coerceAtLeast(0))
+        val items = persistQueue.items.drop(currentIndex).take(MAX_RECOMMENDATIONS)
+
+        if (items.isEmpty()) {
+            Timber.d("Empty queue, skipping recommendations")
+            return
+        }
+
+        val channelId = ensureChannel(ctx)
+
+        val programValues = items.mapNotNull { mediaMeta ->
+            val title = mediaMeta.title.ifBlank { "Unknown song" }
+            val artist = mediaMeta.artists.firstOrNull()?.name.orEmpty()
+            val artworkUri = mediaMeta.thumbnailUrl.orEmpty()
+            val durationMs = mediaMeta.duration.coerceAtLeast(0)
+            val mediaId = mediaMeta.id
+
+            if (mediaId.isBlank()) return@mapNotNull null
+
+            try {
+                val launchIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setClassName(ctx, "com.auramusic.app.TvMainActivity")
+                    putExtra("media_id", mediaId)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+
+                val program = PreviewProgram.Builder()
+                    .setChannelId(channelId)
+                    .setType(TvContractCompat.PreviewProgramColumns.TYPE_TRACK)
+                    .setTitle(title)
+                    .setDescription("$artist • $queueTitle")
+                    .setLongDescription("Continue listening from $queueTitle")
+                    .setIntent(launchIntent)
+                    .setContentId(mediaId)
+                    .setDurationMillis(durationMs)
+                    .setSearchable(true)
+                    .apply {
+                        if (artworkUri.isNotBlank()) {
+                            setPosterArtUri(Uri.parse(artworkUri))
+                            setThumbnailUri(Uri.parse(artworkUri))
+                        }
+                    }
+                    .build()
+
+                program.toContentValues()
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to insert recommendation for $title")
+                null
+            }
+        }
+
+        if (programValues.isEmpty()) {
+            Timber.w("No valid TV recommendations to publish; keeping existing cards")
+            return
+        }
+
+        // Replace the row in one provider transaction so launchers don't observe
+        // the channel after deletion or while only part of the new set is inserted.
+        val operations = ArrayList<ContentProviderOperation>(programValues.size + 1)
+        operations += ContentProviderOperation.newDelete(
+            TvContractCompat.buildPreviewProgramsUriForChannel(channelId)
+        ).build()
+        programValues.forEach { values ->
+            operations += ContentProviderOperation.newInsert(
+                TvContractCompat.PreviewPrograms.CONTENT_URI
+            ).withValues(values).build()
+        }
+        val results = ctx.contentResolver.applyBatch(TvContractCompat.AUTHORITY, operations)
+        val count = results.size - 1
+
+        Timber.d("Published $count TV recommendations for '$queueTitle'")
+
+        // Update the foreground notification with final info
+        val notification: Notification = NotificationCompat.Builder(ctx, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("AuraMusic")
+            .setContentText("Continue Listening • $queueTitle")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, notification)
+    }
+
+    private fun ensureChannel(ctx: Context): Long {
+        // Look for existing channel for this package
+        ctx.contentResolver.query(
+            TvContractCompat.Channels.CONTENT_URI,
+            arrayOf(
+                TvContractCompat.Channels._ID,
+                TvContractCompat.Channels.COLUMN_PACKAGE_NAME,
+            ),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            val packageNameColumn = cursor.getColumnIndexOrThrow(TvContractCompat.Channels.COLUMN_PACKAGE_NAME)
+            while (cursor.moveToNext()) {
+                if (cursor.getString(packageNameColumn) == ctx.packageName) {
+                    return cursor.getLong(0).also { requestChannelVisibility(ctx, it) }
+                }
+            }
+        }
+
+        // Create a new channel
+        val channel = PreviewChannel.Builder()
+            .setDisplayName("AuraMusic")
+            .setDescription("Continue listening recommendations")
+            .setAppLinkIntent(Intent(ctx, com.auramusic.app.TvMainActivity::class.java))
+            .build()
+
+        val channelUri = ctx.contentResolver.insert(
+            TvContractCompat.Channels.CONTENT_URI,
+            channel.toContentValues()
+        )
+
+        return channelUri?.lastPathSegment?.toLongOrNull()?.also {
+            requestChannelVisibility(ctx, it)
+        } ?: 0L
+    }
+
+    private fun requestChannelVisibility(ctx: Context, channelId: Long) {
+        if (channelId <= 0L) return
+        try {
+            TvContractCompat.requestChannelBrowsable(ctx, channelId)
+        } catch (e: Exception) {
+            Timber.w(e, "TV launcher rejected recommendation channel visibility request")
+        }
+    }
+
+    private fun readPersistQueue(context: Context): PersistQueue? {
+        val file = File(context.filesDir, "persistent_queue.data")
+        if (!file.exists()) return null
+        return try {
+            ObjectInputStream(file.inputStream()).use { ois ->
+                ois.readObject() as? PersistQueue
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to read persisted queue")
+            null
+        }
+    }
+
+    companion object {
+        private const val NOTIFICATION_CHANNEL_ID = "tv_recommendations"
+        private const val NOTIFICATION_ID = 9999
+        private const val MAX_RECOMMENDATIONS = 10
+
+        fun start(context: Context) {
+            val intent = Intent(context, TvRecommendationService::class.java)
+            context.startForegroundService(intent)
+        }
+    }
+}

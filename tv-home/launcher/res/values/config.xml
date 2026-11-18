@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher settings. Edit, then run launcher/build-and-install.ps1.
+  Configured for: Xiaomi TV Box S (3rd gen), MiTV-AFMU0, Google TV / Android 14.
+-->
+<resources>
+    <!-- Starting dock, left to right. After the first change on the TV (hold OK on a tile ->
+         Add to dock / Remove / Move), the dock is saved on the box and this list is no longer used. -->
+    <string-array name="dock_apps">
+        <item>org.smarttube.stable.tvhome</item>
+        <item>com.auramusic.app.tvhome</item>
+        <item>com.netflix.ninja</item>
+        <item>com.disneyplus.mea</item>
+        <item>com.amazon.amazonvideo.livingroom</item>
+        <item>com.stremio.one</item>
+        <item>net.mbc.shahidTV</item>
+    </string-array>
+
+    <!-- Never shown as tiles: system helpers. -->
+    <string-array name="hidden_apps">
+        <item>com.mitv.tvhome.atv</item>
+        <item>com.mitv.tvhome.michannel</item>
+        <item>com.mitv.tvhome.mitvplus</item>
+        <item>com.mitv.tvhome.oemtab</item>
+        <item>com.xiaomi.android.tvsetup.partnercustomizer</item>
+        <item>com.xiaomo.tv.milegal</item>
+        <item>com.revanced.net.revancedmanager</item>
+        <!-- Original AuraMusic; the redesigned build (com.auramusic.app.tvhome) is the YouTube Music tile. -->
+        <item>com.auramusic.app</item>
+        <!-- Original SmartTube; the redesigned build (org.smarttube.stable.tvhome) is the DodoTube tile. -->
+        <item>org.smarttube.stable</item>
+    </string-array>
+
+    <!-- "old=new": a dock tile for the old app turns into the new one (same position) once the new one is installed. -->
+    <string-array name="replaced_apps">
+        <item>org.smarttube.stable=org.smarttube.stable.tvhome</item>
+        <item>com.auramusic.app=com.auramusic.app.tvhome</item>
+    </string-array>
+
+    <!-- Starting names for apps, "package=Name". Rename on the TV (hold OK on a tile -> Rename) overrides these. -->
+    <string-array name="app_labels">
+        <item>com.auramusic.app.tvhome=DodoMusic</item>
+        <item>org.smarttube.stable.tvhome=DodoTube</item>
+    </string-array>
+
+    <!-- Tile artwork borrowed from another installed app (even a disabled one), "package=sourcePackage". -->
+    <string-array name="app_art">
+        <item>com.auramusic.app.tvhome=com.google.android.youtube.tvmusic</item>
+        <item>org.smarttube.stable.tvhome=com.google.android.youtube.tv</item>
+    </string-array>
+
+    <!-- Tiles per row in the grid. -->
+    <integer name="columns">5</integer>
+</resources>

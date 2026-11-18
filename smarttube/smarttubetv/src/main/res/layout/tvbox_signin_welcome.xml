@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    TV Box build: welcome / sign-in page (TvBoxSignInFragment), laid out like the official YouTube TV
+    app: options on the left, QR code + activation code on the right.
+    Opens by itself when DodoTube starts with no account signed in, and from the rail's "Sign in".
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:background="@drawable/tvbox_welcome_background">
+
+    <!-- Left: brand, title, options -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="46"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="vertical"
+        android:gravity="center_vertical"
+        android:paddingStart="72dp"
+        android:paddingEnd="24dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:layout_width="34dp"
+                android:layout_height="24dp"
+                android:src="@drawable/tvbox_ic_play_badge"
+                android:importantForAccessibility="no" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="DodoTube"
+                android:textColor="#FFFFFFFF"
+                android:textSize="20sp"
+                android:fontFamily="sans-serif-medium" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvbox_welcome_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/tvbox_welcome_title"
+            android:textColor="#FFFFFFFF"
+            android:textSize="44sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:maxWidth="360dp"
+            android:lineSpacingMultiplier="1.15"
+            android:text="@string/tvbox_welcome_subtitle"
+            android:textColor="@color/tvbox_text_secondary"
+            android:textSize="16sp" />
+
+        <LinearLayout
+            android:id="@+id/tvbox_option_phone"
+            style="@style/TvBox.WelcomeOption"
+            android:layout_marginTop="28dp"
+            android:nextFocusUp="@id/tvbox_option_phone">
+
+            <ImageView style="@style/TvBox.WelcomeOptionIcon" android:src="@drawable/tvbox_ic_phone" />
+            <TextView style="@style/TvBox.WelcomeOptionText" android:text="@string/tvbox_welcome_phone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/tvbox_option_tv"
+            style="@style/TvBox.WelcomeOption">
+
+            <ImageView style="@style/TvBox.WelcomeOptionIcon" android:src="@drawable/tvbox_ic_keyboard" />
+            <TextView style="@style/TvBox.WelcomeOptionText" android:text="@string/tvbox_welcome_tv" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="340dp"
+            android:layout_height="1dp"
+            android:layout_marginTop="14dp"
+            android:layout_marginBottom="10dp"
+            android:background="#33FFFFFF" />
+
+        <LinearLayout
+            android:id="@+id/tvbox_option_guest"
+            style="@style/TvBox.WelcomeOption"
+            android:nextFocusDown="@id/tvbox_option_guest">
+
+            <ImageView style="@style/TvBox.WelcomeOptionIcon" android:src="@drawable/tvbox_ic_guest" />
+            <TextView
+                android:id="@+id/tvbox_option_guest_text"
+                style="@style/TvBox.WelcomeOptionText"
+                android:text="@string/tvbox_welcome_guest" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Right: QR code and the activation code -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="54"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <FrameLayout
+            android:layout_width="232dp"
+            android:layout_height="232dp"
+            android:background="@drawable/tvbox_signin_qr"
+            android:elevation="12dp">
+
+            <ImageView
+                android:id="@+id/tvbox_signin_qr"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="14dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="QR code" />
+
+            <ProgressBar
+                android:id="@+id/tvbox_signin_progress"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="#FF3D5A" />
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="@string/tvbox_welcome_scan"
+            android:textColor="#E6FFFFFF"
+            android:textSize="17sp" />
+
+        <TextView
+            android:id="@+id/tvbox_signin_url"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="yt.be/activate"
+            android:textColor="#FFFFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="@string/tvbox_welcome_enter_code"
+            android:textColor="#E6FFFFFF"
+            android:textSize="17sp" />
+
+        <TextView
+            android:id="@+id/tvbox_signin_code"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="440dp"
+            android:gravity="center"
+            android:letterSpacing="0.06"
+            android:text="@string/tvbox_welcome_loading"
+            android:textColor="#FFFFFFFF"
+            android:textSize="32sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>

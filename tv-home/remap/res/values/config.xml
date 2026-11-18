@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Remote button remaps. Edit, then run remap/build-and-install.sh (Mac) or remap\build-and-install.ps1 (Windows).
+     Each item is "KEYCODE_NAME=package.to.open". Key names: see the remote's .kl file
+     (adb shell cat /vendor/usr/keylayout/Vendor_2717_Product_32b9.kl) prefixed with KEYCODE_. -->
+<resources>
+    <string-array name="remaps">
+        <!-- Example: Xiaomi TV+ / Mi button -> an app of your choice (or set it on the TV in Remote Remap).
+        <item>KEYCODE_BUTTON_4=com.example.app</item>
+        <item>KEYCODE_BUTTON_5=com.example.app</item> -->
+    </string-array>
+    <string name="description">Remaps remote buttons (e.g. Xiaomi TV+) to open other apps. Reads only remote button presses.</string>
+</resources>

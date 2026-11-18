@@ -1,0 +1,28 @@
+# Build output
+build/
+.gradle/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+
+# Signing keys and machine-specific config: never commit these
+*.keystore
+*.jks
+keystore.properties
+local.properties
+tv-home/tools/.tv_host
+
+# Logs
+*.log
+
+# Upstream test suites are left out (they contain recorded requests with tokens)
+**/src/test/
+**/src/androidTest/

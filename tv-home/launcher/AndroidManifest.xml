@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.mihir.tvhome"
+    android:versionCode="3"
+    android:versionName="2.0">
+
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android 11 only reveals the Wi-Fi name to apps holding location; granted over ADB at install. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Lets the long-press menu show the system "Uninstall this app?" prompt. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <package android:name="com.mihir.remap" />
+        <package android:name="com.google.android.youtube.tvmusic" />
+        <package android:name="com.google.android.youtube.tv" />
+        <package android:name="org.smarttube.stable.tvhome" />
+        <package android:name="com.auramusic.app.tvhome" />
+    </queries>
+
+    <application
+        android:label="Home"
+        android:icon="@drawable/ic_home"
+        android:banner="@drawable/ic_home"
+        android:allowBackup="false"
+        android:theme="@style/Home">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:clearTaskOnLaunch="true"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape"
+            android:windowSoftInputMode="adjustNothing"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode|density">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Opens straight onto the All Apps grid (used by the remote's All Apps button via Remote Remap). -->
+            <intent-filter>
+                <action android:name="android.intent.action.ALL_APPS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

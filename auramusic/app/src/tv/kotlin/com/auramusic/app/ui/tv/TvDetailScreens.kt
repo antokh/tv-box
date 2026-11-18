@@ -1,0 +1,1070 @@
+/**
+ * Auramusic Project (C) 2026
+ * Licensed under GPL-3.0 | See git history for contributors
+ */
+
+package com.auramusic.app.ui.tv
+
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.ui.text.style.TextOverflow
+import android.content.Context
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.media3.common.util.UnstableApi
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
+import com.auramusic.app.LocalDatabase
+import com.auramusic.app.R
+import com.auramusic.app.constants.ArtistSongSortType
+import com.auramusic.app.constants.SongSortType
+import com.auramusic.app.db.entities.AlbumEntity
+import com.auramusic.app.db.entities.ArtistEntity
+import com.auramusic.app.db.entities.Playlist
+import com.auramusic.app.db.entities.PlaylistEntity
+import com.auramusic.app.db.entities.Song
+import com.auramusic.app.db.entities.PlaylistSong
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import com.auramusic.app.extensions.toMediaItem
+import com.auramusic.app.playback.PlayerConnection
+import com.auramusic.app.playback.queues.ListQueue
+import com.auramusic.app.ui.component.AuraCanvasImage
+import com.auramusic.app.video.VideoPlaybackManager
+import com.auramusic.app.viewmodels.LibraryAlbumsViewModel
+import com.auramusic.app.viewmodels.LibraryArtistsViewModel
+import com.auramusic.app.viewmodels.LibraryPlaylistsViewModel
+import com.auramusic.innertube.YouTube
+import com.auramusic.innertube.models.AlbumItem
+import com.auramusic.innertube.models.ArtistItem
+import com.auramusic.innertube.models.EpisodeItem
+import com.auramusic.innertube.models.PlaylistItem
+import com.auramusic.innertube.models.PodcastItem
+import com.auramusic.innertube.models.SongItem
+import com.auramusic.innertube.models.YTItem
+import com.auramusic.innertube.pages.ArtistPage
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import com.auramusic.app.utils.makeTimeString
+
+// Unified interface for both local and YouTube songs
+sealed class DisplaySong {
+    abstract val id: String
+    abstract val title: String
+    abstract val thumbnailUrl: String?
+    abstract val artists: String
+    abstract val duration: String?
+    abstract val explicit: Boolean
+
+    data class LocalSong(val song: Song) : DisplaySong() {
+        override val id: String = song.id
+        override val title: String = song.title
+        override val thumbnailUrl: String? = song.thumbnailUrl
+        override val artists: String = song.artists.joinToString(", ") { it.name }
+        override val duration: String? = null // Local songs don't have duration in this format
+        override val explicit: Boolean = song.song.explicit
+    }
+
+    data class YouTubeSong(val songItem: SongItem) : DisplaySong() {
+        override val id: String = songItem.id
+        override val title: String = songItem.title
+        override val thumbnailUrl: String? = songItem.thumbnail
+        override val artists: String = songItem.artists?.joinToString(", ") { it.name } ?: ""
+        override val duration: String? = songItem.duration?.let { makeTimeString(it * 1000L) }
+        override val explicit: Boolean = songItem.explicit
+    }
+}
+
+/* ------------------------------ Album ------------------------------ */
+
+@Composable
+fun TvAlbumDetailScreen(albumId: String, playerConnection: PlayerConnection?, onBackClick: () -> Unit, focusRequester: FocusRequester? = null, onNavigateUp: (() -> Unit)? = null) {
+    BackHandler { onBackClick() }
+    val albumsViewModel: LibraryAlbumsViewModel = hiltViewModel()
+    val database = LocalDatabase.current
+
+    val albums by albumsViewModel.allAlbums.collectAsState()
+    val localAlbum = albums.find { it.album.id == albumId }
+
+    val localSongs by remember(albumId) { database.albumSongs(albumId) }.collectAsState(emptyList<Song>())
+
+    // YouTube data
+    val ytSongs = remember { mutableStateOf<List<SongItem>?>(null) }
+    val ytAlbum = remember { mutableStateOf<com.auramusic.innertube.models.AlbumItem?>(null) }
+
+    LaunchedEffect(albumId) {
+        if (localSongs.isEmpty() && ytSongs.value == null) {
+            // Try to fetch from YouTube
+            YouTube.album(albumId).onSuccess { albumPage ->
+                ytAlbum.value = albumPage.album
+                ytSongs.value = albumPage.songs
+            }
+        }
+    }
+
+    val displaySongs = if (localSongs.isNotEmpty()) {
+        localSongs.map { DisplaySong.LocalSong(it) }
+    } else {
+        ytSongs.value?.map { DisplaySong.YouTubeSong(it) } ?: emptyList()
+    }
+
+    val displayTitle = localAlbum?.album?.title ?: ytAlbum.value?.title ?: "Album"
+    val displaySubtitle = localAlbum?.artists?.joinToString(", ") { it.name } ?: ytAlbum.value?.artists?.joinToString(", ") { it.name }.orEmpty()
+    val displayThumbnail = localAlbum?.album?.thumbnailUrl ?: ytAlbum.value?.thumbnail
+    val songCount = displaySongs.size
+
+    // Like button (YouTube albums only; syncs to library + YouTube Music account)
+    val scope = rememberCoroutineScope()
+    val dbAlbum by database.album(albumId).collectAsState(initial = null)
+    val isAlbumLiked = dbAlbum?.album?.bookmarkedAt != null
+    val showAlbumLike = localAlbum?.album?.isLocal != true
+    val onAlbumLikeClick: () -> Unit = {
+        scope.launch(Dispatchers.IO) {
+            val existing = database.album(albumId).first()
+            if (existing == null) {
+                val playlistId = ytAlbum.value?.playlistId ?: ""
+                val entity = AlbumEntity(
+                    id = albumId,
+                    playlistId = playlistId.ifEmpty { null },
+                    title = displayTitle,
+                    thumbnailUrl = displayThumbnail,
+                    songCount = songCount,
+                    duration = 0,
+                ).localToggleLike()
+                database.insert(entity)
+                if (playlistId.isNotEmpty()) YouTube.likePlaylist(playlistId, true)
+            } else {
+                val updated = existing.album.localToggleLike()
+                database.update(updated)
+                val playlistId = updated.playlistId ?: ""
+                if (playlistId.isNotEmpty()) YouTube.likePlaylist(playlistId, updated.bookmarkedAt != null)
+            }
+        }
+    }
+
+    TvDetailLayout(
+        kindLabel = "Album",
+        title = displayTitle,
+        subtitle = displaySubtitle,
+        meta = "$songCount songs",
+        thumbnailUrl = displayThumbnail,
+        displaySongs = displaySongs,
+        playerConnection = playerConnection,
+        playAllTitle = displayTitle,
+        onBackClick = onBackClick,
+        focusRequester = focusRequester,
+        onNavigateUp = onNavigateUp,
+        showLikeButton = showAlbumLike,
+        isLiked = isAlbumLiked,
+        onLikeClick = onAlbumLikeClick,
+        // Who made it, so the canvas is looked up by the same pair the phone asks in.
+        // The title is already this layout's own.
+        backdropArtist = displaySubtitle,
+    )
+}
+
+/* ------------------------------ Artist ------------------------------ */
+
+@Composable
+fun TvArtistDetailScreen(artistId: String, playerConnection: PlayerConnection?, onBackClick: () -> Unit, focusRequester: FocusRequester? = null, onNavigateUp: (() -> Unit)? = null) {
+    BackHandler { onBackClick() }
+    val artistsViewModel: LibraryArtistsViewModel = hiltViewModel()
+    val database = LocalDatabase.current
+    val navigator = LocalTvNavigator.current
+
+    val artists by artistsViewModel.allArtists.collectAsStateWithLifecycle()
+    val localArtist = artists.find { it.artist.id == artistId }
+
+    val localSongs by remember(artistId) {
+        database.artistSongs(artistId, ArtistSongSortType.CREATE_DATE, true)
+    }.collectAsState(emptyList<Song>())
+
+    // YouTube data
+    val ytArtistPage = remember { mutableStateOf<ArtistPage?>(null) }
+    // Songs that belong to an album. YouTube hands back its video shelves as songs
+    // too - the difference is the album they came from - so counting every SongItem
+    // here put the same videos in Top songs and again in their own shelf.
+    val ytSongs = ytArtistPage.value?.sections
+        ?.flatMap { it.items }
+        ?.filterIsInstance<SongItem>()
+        ?.filter { it.album != null }
+        ?.distinctBy { it.id }
+        .orEmpty()
+
+    LaunchedEffect(artistId) {
+        // Always try YouTube to get full artist page (Albums, Videos, etc.)
+        YouTube.artist(artistId).onSuccess { artistPage ->
+            ytArtistPage.value = artistPage
+        }
+    }
+
+    val displayTitle = localArtist?.artist?.name ?: ytArtistPage.value?.artist?.title ?: "Artist"
+    val displayThumbnail = localArtist?.artist?.thumbnailUrl ?: ytArtistPage.value?.artist?.thumbnail
+
+    // Subscribe button (syncs to library + YouTube Music account)
+    val scope = rememberCoroutineScope()
+    val dbArtist by database.artist(artistId).collectAsState(initial = null)
+    val isSubscribed = dbArtist?.artist?.bookmarkedAt != null
+    val onSubscribeClick: () -> Unit = {
+        scope.launch(Dispatchers.IO) {
+            val existing = database.artist(artistId).first()
+            if (existing == null) {
+                val channelId = ytArtistPage.value?.artist?.channelId ?: YouTube.getChannelId(artistId)
+                val entity = ArtistEntity(
+                    id = artistId,
+                    name = displayTitle,
+                    thumbnailUrl = displayThumbnail,
+                    channelId = channelId.ifEmpty { null },
+                ).localToggleLike()
+                database.insert(entity)
+                if (channelId.isNotEmpty()) YouTube.subscribeChannel(channelId, true)
+            } else {
+                val updated = existing.artist.localToggleLike()
+                database.update(updated)
+                val channelId = updated.channelId ?: YouTube.getChannelId(artistId)
+                if (channelId.isNotEmpty()) YouTube.subscribeChannel(channelId, updated.bookmarkedAt != null)
+            }
+        }
+    }
+
+    // Structure content similar to mobile app
+    var backButtonFocused by remember { mutableStateOf(false) }
+    val backButtonFocus = focusRequester ?: remember { FocusRequester() }
+
+    // Click handler shared across all YouTube items
+    val videoContext = LocalContext.current
+    val onYTClick: (com.auramusic.innertube.models.YTItem) -> Unit = { item ->
+        when (item) {
+            is SongItem -> TvPlayback.playVideoOrSong(videoContext, playerConnection, navigator, item)
+            is AlbumItem -> {
+                val browseId = item.browseId
+                if (browseId != null) {
+                    navigator.navigate(TvDestination.Album(browseId))
+                } else {
+                    playerConnection?.playQueue(
+                        com.auramusic.app.playback.queues.YouTubeQueue(
+                            com.auramusic.innertube.models.WatchEndpoint(playlistId = item.playlistId)
+                        )
+                    )
+                }
+            }
+            is ArtistItem -> item.id?.let { navigator.navigate(TvDestination.Artist(it)) }
+            is PlaylistItem -> navigator.navigate(TvDestination.Playlist(item.id))
+            is EpisodeItem -> playerConnection?.playQueue(
+                com.auramusic.app.playback.queues.YouTubeQueue(
+                    com.auramusic.innertube.models.WatchEndpoint(videoId = item.id)
+                )
+            )
+            is PodcastItem -> item.id?.let { navigator.navigate(TvDestination.Playlist(it)) }
+            else -> {}
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        runCatching { backButtonFocus.requestFocus() }
+    }
+
+    // Behind the whole screen, not inside any one row: the artist's own picture stays
+    // put while the shelves scroll under it.
+    Box(modifier = Modifier.fillMaxSize()) {
+        TvCanvasBackdrop(
+            // An artist is looked up by who they are, not by a title of their own -
+            // the same shape the phone asks in, which is what makes the two agree on
+            // which canvas this is.
+            backdropTitle = null,
+            backdropArtist = displayTitle,
+            imageUrl = displayThumbnail,
+        )
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                    if (backButtonFocused) {
+                        onNavigateUp?.invoke()
+                        true
+                    } else {
+                        false // Let LazyColumn handle normal focus movement
+                    }
+                } else {
+                    false
+                }
+            },
+        contentPadding = PaddingValues(start = 48.dp, top = 95.dp, end = 48.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(32.dp),
+    ) {
+        // Header section
+        item {
+            // Back button with TV navigation
+            IconButton(
+                onClick = onBackClick,
+                modifier = Modifier
+                    .padding(bottom = 16.dp)
+                    .size(64.dp)
+                    .focusRequester(backButtonFocus)
+                    .onFocusChanged {
+                        backButtonFocused = it.isFocused
+                    }
+                    .border(
+                        width = if (backButtonFocused) 3.dp else 0.dp,
+                        color = if (backButtonFocused) TvStyle.Focus else Color.Transparent,
+                        shape = RoundedCornerShape(12.dp)
+                    ),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(220.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = displayThumbnail,
+                        contentDescription = displayTitle,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = displayTitle,
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2,
+                    )
+                    Text(
+                        text = "Artist",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+
+                    // Artist about info like mobile app - positioned to the right of thumbnail
+                    ytArtistPage.value?.let { page ->
+                        page.subscriberCountText?.let { subscribers ->
+                            Text(
+                                text = subscribers,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        page.monthlyListenerCount?.let { listeners ->
+                            Text(
+                                text = listeners,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        // Artist description
+                        val description = page.description
+                        val descriptionRuns = page.descriptionRuns
+                        if (!description.isNullOrEmpty() || !descriptionRuns.isNullOrEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "About",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                            )
+                            Text(
+                                text = description ?: descriptionRuns?.joinToString("") { it.text } ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 20.sp,
+                                maxLines = 3,
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvPrimaryButton(label = "Play all") {
+                            val allSongs = if (localSongs.isNotEmpty()) {
+                                localSongs.map { DisplaySong.LocalSong(it) }
+                            } else {
+                                ytSongs.map { DisplaySong.YouTubeSong(it) }
+                            }
+                            playerConnection.playAll(allSongs, displayTitle)
+                        }
+                        TvSecondaryButton(label = "Shuffle") {
+                            val allSongs = if (localSongs.isNotEmpty()) {
+                                localSongs.map { DisplaySong.LocalSong(it) }
+                            } else {
+                                ytSongs.map { DisplaySong.YouTubeSong(it) }
+                            }
+                            playerConnection.playAll(allSongs.shuffled(), displayTitle)
+                        }
+                        TvSecondaryButton(label = if (isSubscribed) "Subscribed" else "Subscribe") {
+                            onSubscribeClick()
+                        }
+                    }
+                }
+            }
+        }
+
+        // Local Songs section
+        if (localSongs.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Songs",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+            itemsIndexed(localSongs, key = { index, song -> "${index}_${song.id}" }) { index, song ->
+                SongRowItem(
+                    displaySong = DisplaySong.LocalSong(song),
+                    onClick = { playerConnection?.playSong(song) },
+                )
+            }
+        }
+
+        // Top Songs as a horizontal row (like the home screen)
+        if (ytSongs.isNotEmpty()) {
+            item(key = "top_songs") {
+                YouTubeSectionRow(
+                    title = "Top Songs",
+                    items = ytSongs.take(20),
+                    playerConnection = playerConnection,
+                    onYTItemClick = onYTClick,
+                )
+            }
+        }
+
+        // YouTube sections (Albums, Videos, Featured On, Playlists By Artist) as horizontal rows
+        ytArtistPage.value?.let { page ->
+            // Everything except the song lists, which are the songs above. Asking
+            // instead whether a section holds anything that is not a SongItem is what
+            // threw the Videos shelf away: YouTube builds it out of songs that happen
+            // to be videos, so the section looked like more of the song list and was
+            // dropped with it. What separates a song from a video is not its type but
+            // whether it belongs to an album - the same test the phone uses.
+            val nonSongSections = page.sections.filter { section ->
+                (section.items.firstOrNull() as? SongItem)?.album == null
+            }
+            nonSongSections.forEachIndexed { sectionIndex, section ->
+                item(key = "artist_section_$sectionIndex") {
+                    val sectionTitle = section.title.ifBlank { "More" }
+                    YouTubeSectionRow(
+                        title = sectionTitle,
+                        items = section.items,
+                        playerConnection = playerConnection,
+                        onYTItemClick = onYTClick,
+                    )
+                }
+            }
+        }
+
+        if (localSongs.isEmpty() && ytSongs.isEmpty() && (ytArtistPage.value?.sections?.isEmpty() != false)) {
+            item {
+                Text(
+                    text = "No content available for this artist.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+    }
+}
+
+/* ------------------------------ Playlist ------------------------------ */
+
+@Composable
+ fun TvPlaylistDetailScreen(playlistId: String, playerConnection: PlayerConnection?, onBackClick: () -> Unit, focusRequester: FocusRequester? = null, onNavigateUp: (() -> Unit)? = null) {
+    BackHandler { onBackClick() }
+    val playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel()
+    val database = LocalDatabase.current
+    val scope = rememberCoroutineScope()
+
+    val playlists by playlistsViewModel.allPlaylists.collectAsStateWithLifecycle()
+    val localPlaylist = playlists.find { it.playlist.id == playlistId }
+
+    val isLikedMusic = playlistId == "LM"
+
+    val localPlaylistSongs by database.playlistSongs(playlistId).collectAsState(emptyList())
+    val localLikedSongs by database.likedSongs(SongSortType.CREATE_DATE, false).collectAsState(emptyList())
+
+    val localSongs = if (isLikedMusic) localLikedSongs else localPlaylistSongs.map { it.song }
+
+    // YouTube data
+    val ytSongs = remember { mutableStateOf<List<SongItem>?>(null) }
+    val ytPlaylist = remember { mutableStateOf<com.auramusic.innertube.models.PlaylistItem?>(null) }
+
+    LaunchedEffect(playlistId) {
+        if (!isLikedMusic && localSongs.isEmpty() && ytSongs.value == null) {
+            // Try to fetch from YouTube
+            YouTube.playlist(playlistId).onSuccess { playlistPage ->
+                ytPlaylist.value = playlistPage.playlist
+                ytSongs.value = playlistPage.songs
+            }
+        }
+    }
+
+    val displaySongs = if (localSongs.isNotEmpty()) {
+        localSongs.map { DisplaySong.LocalSong(it) }
+    } else {
+        ytSongs.value?.map { DisplaySong.YouTubeSong(it) } ?: emptyList()
+    }
+
+    val displayTitle = if (isLikedMusic) {
+        stringResource(R.string.liked_songs)
+    } else {
+        localPlaylist?.playlist?.name ?: ytPlaylist.value?.title ?: "Playlist"
+    }
+    val displayThumbnail = if (isLikedMusic) {
+        localSongs.firstOrNull()?.thumbnailUrl
+    } else {
+        localPlaylist?.playlist?.thumbnailUrl ?: ytPlaylist.value?.thumbnail
+    }
+    val songCount = displaySongs.size
+
+    // Like button (only for remote YouTube playlists, not the local "Liked Music" view)
+    val isYtPlaylist = !isLikedMusic && (localPlaylist?.playlist?.isLocal != true)
+    val dbPlaylist by database.playlistByBrowseId(playlistId).collectAsState(initial = null)
+    val isLiked = dbPlaylist?.playlist?.bookmarkedAt != null
+    val onLikeClick: () -> Unit = {
+        scope.launch(Dispatchers.IO) {
+            val existing = database.playlistByBrowseId(playlistId).first()
+            if (existing == null) {
+                val entity = PlaylistEntity(
+                    name = ytPlaylist.value?.title ?: displayTitle,
+                    browseId = playlistId,
+                    thumbnailUrl = displayThumbnail,
+                    isEditable = false,
+                ).localToggleLike()
+                database.insert(entity)
+                YouTube.likePlaylist(playlistId, true)
+            } else {
+                val updated = existing.playlist.localToggleLike()
+                database.update(updated)
+                YouTube.likePlaylist(playlistId, updated.bookmarkedAt != null)
+            }
+        }
+    }
+
+    TvDetailLayout(
+        title = displayTitle,
+        subtitle = "",
+        meta = "$songCount songs",
+        thumbnailUrl = displayThumbnail,
+        displaySongs = displaySongs,
+        playerConnection = playerConnection,
+        playAllTitle = displayTitle,
+        onBackClick = onBackClick,
+        focusRequester = focusRequester,
+        onNavigateUp = onNavigateUp,
+        showLikeButton = isYtPlaylist,
+        isLiked = isLiked,
+        onLikeClick = onLikeClick,
+    )
+}
+
+/* ------------------------------ Layout ------------------------------ */
+
+/**
+ * The artwork behind a detail screen, edge to edge.
+ *
+ * The same canvas the phone puts behind an album or an artist, moved here to fill the
+ * whole panel and pushed all the way back: the television has the width for a picture
+ * to be seen rather than described, and a screen that has one album's colours behind
+ * it reads as that album's own page rather than as a list.
+ *
+ * [backdropTitle] is what the canvas is looked up by when the preference is on; the
+ * artwork itself is shown either way, so the backdrop is there before the canvas
+ * resolves and is not taken away if it never does.
+ */
+@Composable
+fun TvCanvasBackdrop(
+    backdropTitle: String? = null,
+    backdropArtist: String?,
+    backdropAlbum: String? = null,
+    imageUrl: String? = null,
+    modifier: Modifier = Modifier,
+    /**
+     * What is laid over the picture. The player and the detail screens both want this
+     * and want different things: a list is read against the page behind it, a video is
+     * watched against black. Null takes the surface colour, which is the right answer
+     * everywhere but over media.
+     */
+    scrimColor: Color? = null,
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        if (!imageUrl.isNullOrBlank() || !backdropTitle.isNullOrBlank() || !backdropArtist.isNullOrBlank()) {
+            @UnstableApi
+            AuraCanvasImage(
+                title = backdropTitle?.takeIf { it.isNotBlank() },
+                artist = backdropArtist?.ifBlank { null },
+                album = backdropAlbum?.ifBlank { null },
+                staticImageUrl = imageUrl,
+                contentScale = ContentScale.Crop,
+                // Always on here: this is the screen's own artwork rather than a
+                // setting, and a television has nowhere to go and turn one on.
+                alwaysEnabled = true,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        // A backdrop is only a backdrop if what is written over it can still be read.
+        // Heavier towards the bottom, where the rows are densest, and never fully clear
+        // anywhere: a title sitting on a bright cover is unreadable at any distance.
+        val behind = scrimColor ?: MaterialTheme.colorScheme.background
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to behind.copy(alpha = 0.72f),
+                        0.55f to behind.copy(alpha = 0.84f),
+                        1f to behind.copy(alpha = 0.94f),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+private fun TvDetailLayout(
+    title: String,
+    subtitle: String,
+    meta: String,
+    thumbnailUrl: String?,
+    displaySongs: List<DisplaySong>,
+    playerConnection: PlayerConnection?,
+    playAllTitle: String?,
+    onBackClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
+    onNavigateUp: (() -> Unit)? = null,
+    showLikeButton: Boolean = false,
+    isLiked: Boolean = false,
+    onLikeClick: () -> Unit = {},
+    /** Who the page belongs to, for the canvas backdrop. Null when there is nobody. */
+    backdropArtist: String? = null,
+    backdropAlbum: String? = null,
+    /** Shown above the title: Album or Playlist. */
+    kindLabel: String = "Playlist",
+) {
+    val backButtonFocus = focusRequester ?: remember { FocusRequester() }
+    // A video from one of these rows is handed to the video pipeline, which takes a
+    // context, and it has to be shown rather than merely begun. Both are read here so
+    // the row below does not have to know where they came from.
+    val songContext = LocalContext.current
+    val songNavigator = LocalTvNavigator.current
+    // Tracks whether the back button currently holds focus. We only steal
+    // the up-key to escape to the top nav bar when this is true – otherwise
+    // we let Compose's normal focus traversal move focus between rows so
+    // the user doesn't jump straight to the top bar from mid-content.
+    var backButtonFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        runCatching { backButtonFocus.requestFocus() }
+    }
+
+    // The backdrop sits behind the whole screen rather than inside any one row, so it
+    // stays put while the list scrolls under it instead of scrolling away with the
+    // first item.
+    Box(modifier = Modifier.fillMaxSize()) {
+        TvAmbientBackdrop(artUrl = thumbnailUrl)
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                    if (backButtonFocused) {
+                        onNavigateUp?.invoke()
+                        true
+                    } else {
+                        false // Let LazyColumn handle normal focus movement
+                    }
+                } else {
+                    false
+                }
+            },
+        contentPadding = PaddingValues(start = 56.dp, top = 112.dp, end = 56.dp, bottom = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        item(key = "header") {
+            // Back button
+            IconButton(
+                onClick = onBackClick,
+                modifier = Modifier
+                    .padding(bottom = 20.dp)
+                    .size(56.dp)
+                    .focusRequester(backButtonFocus)
+                    .onFocusChanged { state ->
+                        backButtonFocused = state.isFocused
+                    }
+                    .background(if (backButtonFocused) TvStyle.Focus else TvStyle.GlassFill, CircleShape)
+                    .border(1.dp, if (backButtonFocused) Color.Transparent else TvStyle.GlassStroke, CircleShape),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = if (backButtonFocused) TvStyle.OnFocus else TvStyle.TextPrimary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(40.dp),
+                verticalAlignment = Alignment.Bottom,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(300.dp)
+                        .graphicsLayer {
+                            shadowElevation = 40f
+                            shape = RoundedCornerShape(22.dp)
+                            clip = true
+                        }
+                        .background(Color.White.copy(alpha = 0.06f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = kindLabel.uppercase(),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 2.5.sp,
+                        color = TvStyle.TextSecondary,
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = TvStyle.TextPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (subtitle.isNotEmpty()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = TvStyle.TextSecondary,
+                            maxLines = 1,
+                        )
+                    }
+                    if (meta.isNotEmpty()) {
+                        Text(
+                            text = meta,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TvStyle.TextTertiary,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        TvPrimaryButton(label = "Play all", icon = Icons.Filled.PlayArrow) {
+                            playerConnection.playAll(displaySongs, playAllTitle)
+                        }
+                        TvSecondaryButton(label = "Shuffle", icon = Icons.Filled.Shuffle) {
+                            playerConnection.playAll(displaySongs.shuffled(), playAllTitle)
+                        }
+                        if (showLikeButton) {
+                            TvSecondaryButton(label = if (isLiked) "Liked" else "Like") {
+                                onLikeClick()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        itemsIndexed(displaySongs, key = { index, displaySong -> "${index}_${displaySong.id}" }) { index, displaySong ->
+            SongRowItem(
+                displaySong = displaySong,
+                number = index + 1,
+                onClick = { playerConnection?.playDisplaySong(displaySong, songContext, songNavigator) },
+            )
+        }
+
+        if (displaySongs.isEmpty()) {
+            item {
+                Text(
+                    text = "No songs in this collection.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+        // Fade the list out under the clock and pills instead of sliding behind them.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .background(
+                    Brush.verticalGradient(
+                        0f to TvStyle.Base.copy(alpha = 0.92f),
+                        0.7f to TvStyle.Base.copy(alpha = 0.6f),
+                        1f to Color.Transparent,
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+private fun SongRowItem(displaySong: DisplaySong, onClick: () -> Unit, modifier: Modifier = Modifier, number: Int? = null) {
+    val isFocusedState = remember { mutableStateOf(false) }
+    val focused = isFocusedState.value
+    val primaryText = if (focused) TvStyle.OnFocus else TvStyle.TextPrimary
+    val secondaryText = if (focused) TvStyle.OnFocus.copy(alpha = 0.65f) else TvStyle.TextSecondary
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (focused) TvStyle.Focus else Color.Transparent)
+            .onFocusChanged { isFocusedState.value = it.isFocused }
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        if (number != null) {
+            Text(
+                text = number.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                color = secondaryText,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                modifier = Modifier.width(32.dp),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.White.copy(alpha = 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (displaySong.thumbnailUrl.isNullOrBlank()) {
+                Icon(
+                    imageVector = Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    tint = secondaryText,
+                    modifier = Modifier.size(24.dp),
+                )
+            } else {
+                AsyncImage(
+                    model = displaySong.thumbnailUrl,
+                    contentDescription = displaySong.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = displaySong.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = primaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (displaySong.explicit) {
+                    Icon(
+                        painter = painterResource(com.auramusic.app.R.drawable.explicit),
+                        contentDescription = "Explicit",
+                        modifier = Modifier.size(16.dp),
+                        tint = secondaryText,
+                    )
+                }
+            }
+            Text(
+                text = displaySong.artists,
+                style = MaterialTheme.typography.bodyLarge,
+                color = secondaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        displaySong.duration?.let { duration ->
+            Text(
+                text = duration,
+                style = MaterialTheme.typography.bodyLarge,
+                color = secondaryText,
+            )
+        }
+    }
+}
+
+private fun PlayerConnection?.playDisplaySong(
+    displaySong: DisplaySong,
+    context: Context,
+    navigator: TvNavigator?,
+) {
+    if (this == null) return
+    when (displaySong) {
+        is DisplaySong.LocalSong -> {
+            // A video song in the library is the same video as any other, and it is
+            // the answer before playback starts rather than something discovered
+            // halfway through it.
+            if (displaySong.song.song.isVideo && !TvPlayback.musicOnly) {
+                TvPlayback.playVideo(
+                    context = context,
+                    navigator = navigator,
+                    videoId = displaySong.id,
+                    title = displaySong.title,
+                    channelName = displaySong.artists,
+                )
+            } else {
+                playQueue(
+                    ListQueue(
+                        title = displaySong.song.song.title,
+                        items = listOf(displaySong.song.toMediaItem()),
+                        startIndex = 0,
+                    ),
+                )
+            }
+        }
+        is DisplaySong.YouTubeSong -> {
+            // Decided in one place with every other shelf, which is what makes a
+            // video a video here as it is on the artist screen. This row is what the
+            // home shelves, playlists and search results all use, and it went
+            // straight to the music queue - so those were the surfaces where a video
+            // arrived as sound first and a picture afterwards, if at all.
+            if (TvPlayback.isVideo(displaySong.songItem)) {
+                TvPlayback.playVideo(
+                    context = context,
+                    navigator = navigator,
+                    videoId = displaySong.id,
+                    title = displaySong.title,
+                    channelName = displaySong.artists,
+                )
+            } else {
+                playQueue(com.auramusic.app.playback.queues.YouTubeQueue(
+                    com.auramusic.innertube.models.WatchEndpoint(videoId = displaySong.songItem.id)
+                ))
+            }
+        }
+    }
+}
+
+private fun PlayerConnection?.playAll(displaySongs: List<DisplaySong>, title: String?) {
+    if (this == null || displaySongs.isEmpty()) return
+
+    val localSongs = displaySongs.filterIsInstance<DisplaySong.LocalSong>().map { it.song }
+    val ytSongs = displaySongs.filterIsInstance<DisplaySong.YouTubeSong>().map { it.songItem }
+
+    if (localSongs.isNotEmpty()) {
+        // If we have local songs, play them
+        playQueue(
+            ListQueue(
+                title = title,
+                items = localSongs.map { it.toMediaItem() },
+                startIndex = 0,
+            ),
+        )
+    } else if (ytSongs.isNotEmpty()) {
+        // If we only have YouTube songs, play the first one
+        playQueue(com.auramusic.app.playback.queues.YouTubeQueue(
+            com.auramusic.innertube.models.WatchEndpoint(videoId = ytSongs.first().id)
+        ))
+    }
+}
+
+

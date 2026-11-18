@@ -1,0 +1,1360 @@
+/**
+ * Auramusic Project (C) 2026
+ * Licensed under GPL-3.0 | See git history for contributors
+ */
+
+package com.auramusic.app.ui.screens.videos
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SecondaryScrollableTabRow
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import android.widget.Toast
+import coil3.compose.AsyncImage
+import com.auramusic.app.LocalPlayerAwareWindowInsets
+import com.auramusic.app.R
+import com.auramusic.app.utils.VideoThumbnails
+import com.auramusic.app.utils.compactViewCount
+import com.auramusic.app.utils.linkifiedText
+import com.auramusic.app.ui.component.MarqueeTitle
+import com.auramusic.app.video.VideoPlaybackManager
+import com.auramusic.innertube.NewPipeExtractor
+import com.auramusic.innertube.YouTube
+import com.auramusic.innertube.models.Thumbnail
+import com.auramusic.innertube.models.YouTubeChannelPost
+import com.auramusic.innertube.models.YouTubeVideoItem
+import com.auramusic.innertube.pages.YouTubeChannelPage
+import com.valentinilk.shimmer.shimmer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.URLDecoder
+
+private enum class ChannelTab(val labelRes: Int) {
+    Videos(R.string.channel_tab_videos),
+    Shorts(R.string.channel_tab_shorts),
+    Live(R.string.channel_tab_live),
+    Posts(R.string.channel_tab_posts),
+    About(R.string.channel_tab_about),
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChannelScreen(
+    navController: NavController,
+    channelIdOrUrl: String,
+) {
+    val context = LocalContext.current
+    val insets = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+    val gridState = rememberLazyGridState()
+
+    val channelId = remember(channelIdOrUrl) { extractChannelId(channelIdOrUrl) }
+    var resolvedChannelId by remember(channelId) { mutableStateOf(channelId) }
+    var channelReloadKey by remember { mutableStateOf(0) }
+
+    var header by remember { mutableStateOf<ChannelHeader?>(null) }
+    var videos by remember(channelId) { mutableStateOf<List<YouTubeVideoItem>>(emptyList()) }
+    var channelListView by remember { mutableStateOf(false) }
+    var subscribeError by remember { mutableStateOf<String?>(null) }
+    var continuation by remember(channelId) { mutableStateOf<String?>(null) }
+    var posts by remember(channelId) { mutableStateOf<List<YouTubeChannelPost>>(emptyList()) }
+    var postsContinuation by remember(channelId) { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    var isSubscribed by remember(channelId) { mutableStateOf(false) }
+    var isSubscribing by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(ChannelTab.Videos.ordinal) }
+    var shortsPagerIndex by remember { mutableIntStateOf(-1) }
+
+    val pullRefreshState = rememberPullToRefreshState()
+    val scope = rememberCoroutineScope()
+
+    suspend fun loadFirstPage(tab: ChannelTab, clear: Boolean = true) {
+        if (clear) {
+            isLoading = true
+            videos = emptyList()
+            continuation = null
+            posts = emptyList()
+            postsContinuation = null
+        }
+        error = null
+        val requestChannelId = withContext(Dispatchers.IO) {
+            if (resolvedChannelId.startsWith("@")) {
+                YouTube.getChannelId(resolvedChannelId).ifBlank { resolvedChannelId }
+            } else {
+                resolvedChannelId
+            }
+        }
+        val params = when (tab) {
+            ChannelTab.Videos -> YouTubeChannelPage.VIDEOS_PARAMS
+            ChannelTab.Shorts -> YouTubeChannelPage.SHORTS_PARAMS
+            ChannelTab.Live -> YouTubeChannelPage.LIVE_PARAMS
+            ChannelTab.Posts -> null
+            ChannelTab.About -> null
+        }
+        if (tab == ChannelTab.Posts) {
+            val page = withContext(Dispatchers.IO) {
+                YouTube.youtubeChannelPosts(requestChannelId).getOrNull()
+            }
+            if (page != null) {
+                resolvedChannelId = requestChannelId
+                posts = page.posts
+                postsContinuation = page.continuation
+            } else if (clear) {
+                error = context.getString(R.string.videos_feed_error)
+            }
+            isLoading = false
+            return
+        }
+        val result = withContext(Dispatchers.IO) {
+            YouTube.youtubeChannel(requestChannelId, params).getOrNull()
+        }
+        if (result != null) {
+            resolvedChannelId = result.channelId
+            header = ChannelHeader(
+                channelId = result.channelId,
+                title = result.title,
+                avatarUrl = result.avatarUrl,
+                bannerUrl = result.bannerUrl,
+                subscriberCountText = result.subscriberCountText,
+                videosCountText = result.videosCountText,
+                description = result.description,
+            )
+            // The Innertube channel page sometimes hands back its shell without the
+            // header fields. The extractor parses them on every response, so anything
+            // still blank gets topped up from there instead of leaving the banner,
+            // about text or subscriber count missing.
+            val needsHeaderTopUp = result.bannerUrl == null ||
+                result.subscriberCountText == null ||
+                result.description.isNullOrBlank() ||
+                result.avatarUrl == null ||
+                result.title.isBlank()
+            if (needsHeaderTopUp) {
+                val extra = withContext(Dispatchers.IO) {
+                    NewPipeExtractor.getChannelMetadata(result.channelId)
+                }
+                val current = header
+                if (extra != null && current != null) {
+                    header = current.copy(
+                        title = current.title.ifBlank { extra.name },
+                        avatarUrl = current.avatarUrl ?: extra.avatarUrl,
+                        bannerUrl = current.bannerUrl ?: extra.bannerUrl,
+                        subscriberCountText = current.subscriberCountText
+                            ?: extra.subscriberCount.takeIf { it >= 0 }
+                                ?.let { "${compactViewCount(it.toString())} subscribers" },
+                        description = current.description?.takeIf { it.isNotBlank() }
+                            ?: extra.description,
+                    )
+                }
+            }
+            result.isSubscribed?.let { isSubscribed = it }
+            if (result.isSubscribed == null) {
+                // Remote page didn't expose the toggle state; fall back to the
+                // locally-persisted record from a previous subscribe action.
+                val locallySubscribed = VideoPlaybackManager
+                    .readSubscribedChannels(context)
+                    .any { it.channelId == resolvedChannelId }
+                if (locallySubscribed) isSubscribed = true
+            }
+            videos = result.videos
+            continuation = result.continuation
+        } else {
+            // Innertube's channel page failed outright; the extractor still delivers
+            // the header (name, avatar, banner, about), so the page opens with real
+            // metadata rather than an error shell.
+            val fallback = withContext(Dispatchers.IO) {
+                NewPipeExtractor.getChannelMetadata(requestChannelId)
+            }
+            if (fallback != null) {
+                resolvedChannelId = requestChannelId
+                header = ChannelHeader(
+                    channelId = requestChannelId,
+                    title = fallback.name,
+                    avatarUrl = fallback.avatarUrl,
+                    bannerUrl = fallback.bannerUrl,
+                    subscriberCountText = fallback.subscriberCount.takeIf { it >= 0 }
+                        ?.let { "${compactViewCount(it.toString())} subscribers" },
+                    videosCountText = null,
+                    description = fallback.description,
+                )
+            } else if (clear) {
+                error = context.getString(R.string.videos_feed_error)
+            }
+        }
+        isLoading = false
+    }
+
+     suspend fun loadMore() {
+        if (isLoadingMore || selectedTab == ChannelTab.About.ordinal) return
+        isLoadingMore = true
+        if (selectedTab == ChannelTab.Posts.ordinal) {
+            val cont = postsContinuation
+            if (cont != null) {
+                val page = withContext(Dispatchers.IO) {
+                    YouTube.youtubeChannelPosts(resolvedChannelId, cont).getOrNull()
+                }
+                page?.let {
+                    val existing = posts.map { it.postId }.toSet()
+                    posts = posts + it.posts.filter { p -> p.postId !in existing }
+                    postsContinuation = it.continuation
+                }
+            }
+            isLoadingMore = false
+            return
+        }
+        val cont = continuation ?: run {
+            isLoadingMore = false
+            return
+        }
+        val result = withContext(Dispatchers.IO) {
+            YouTube.youtubeChannelContinuation(resolvedChannelId, cont).getOrNull()
+        }
+        result?.let {
+            val existing = videos.map { it.videoId }.toSet()
+            val newVideos = it.videos.filter { v -> v.videoId !in existing }
+            videos = videos + newVideos
+            continuation = it.continuation
+        }
+        isLoadingMore = false
+    }
+
+     suspend fun refreshChannel() {
+        isRefreshing = true
+        loadFirstPage(ChannelTab.entries[selectedTab], clear = false)
+        isRefreshing = false
+    }
+
+    fun toggleSubscribe() {
+        if (isSubscribing) return
+        val newSubscribed = !isSubscribed
+        val previous = isSubscribed
+        // Flipped immediately: the control used to wait for the round-trip and simply
+        // never changed when it failed - a signed-out tap looked like a dead button.
+        isSubscribed = newSubscribed
+        isSubscribing = true
+        scope.launch {
+            // Recorded locally either way, so the Library's channel list and the video
+            // overlay agree with this screen immediately.
+            VideoPlaybackManager.persistChannelSubscription(
+                context = context,
+                channelId = resolvedChannelId,
+                name = header?.title.orEmpty(),
+                avatarUrl = header?.avatarUrl,
+                subscribe = newSubscribed,
+            )
+            VideoPlaybackManager.markChannelSubscribed(resolvedChannelId, newSubscribed)
+            val result = YouTube.subscribeChannel(resolvedChannelId, newSubscribed)
+            if (result.isFailure) {
+                // Put it back and say why, rather than leaving a state that never
+                // reached the account.
+                isSubscribed = previous
+                VideoPlaybackManager.persistChannelSubscription(
+                    context = context,
+                    channelId = resolvedChannelId,
+                    name = header?.title.orEmpty(),
+                    avatarUrl = header?.avatarUrl,
+                    subscribe = previous,
+                )
+                VideoPlaybackManager.markChannelSubscribed(resolvedChannelId, previous)
+                subscribeError = if (!YouTube.isLoggedIn()) {
+                    context.getString(R.string.subscribe_needs_account)
+                } else {
+                    result.exceptionOrNull()?.message ?: context.getString(R.string.subscribe_failed)
+                }
+            }
+            isSubscribing = false
+        }
+    }
+
+    LaunchedEffect(channelId, selectedTab, channelReloadKey) {
+        loadFirstPage(ChannelTab.entries[selectedTab])
+    }
+
+    // Seeded from storage and then kept in step with the shared set, so a channel
+    // subscribed from the video overlay already reads as subscribed here.
+    LaunchedEffect(Unit) {
+        VideoPlaybackManager.primeSubscribedChannels(context)
+    }
+
+    val sharedSubscriptions by VideoPlaybackManager.subscribedChannelIds.collectAsState()
+    LaunchedEffect(sharedSubscriptions, resolvedChannelId) {
+        if (resolvedChannelId.isNotBlank() && sharedSubscriptions.contains(resolvedChannelId)) {
+            isSubscribed = true
+        }
+    }
+
+    subscribeError?.let { message ->
+        LaunchedEffect(message) {
+            kotlinx.coroutines.delay(4_000)
+            subscribeError = null
+        }
+    }
+
+    LaunchedEffect(isLoading) {
+        if (!isLoading && !isLoadingMore) {
+            val nearEnd = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            if (nearEnd >= gridState.layoutInfo.totalItemsCount - 4) loadMore()
+        }
+    }
+    LaunchedEffect(gridState, selectedTab) {
+        snapshotFlow {
+            val last = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            last >= gridState.layoutInfo.totalItemsCount - 4
+        }.collect { nearEnd -> if (nearEnd) loadMore() }
+    }
+
+    val isShorts = ChannelTab.entries[selectedTab] == ChannelTab.Shorts
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+        state = gridState,
+        modifier = Modifier
+            .fillMaxSize()
+            .pullToRefresh(
+                state = pullRefreshState,
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    isRefreshing = true
+                    scope.launch {
+                        refreshChannel()
+                    }
+                },
+            ),
+        contentPadding = PaddingValues(bottom = insets.calculateBottomPadding() + 16.dp),
+    ) {
+        item(
+            key = "header",
+            span = { GridItemSpan(maxLineSpan) },
+        ) {
+            ChannelHeaderSection(
+                header = header,
+                isLoading = isLoading,
+                isSubscribed = isSubscribed,
+                isSubscribing = isSubscribing,
+                subscribeError = subscribeError,
+                onOpenArtist = {
+                    // The artist page is keyed by this same id, so it resolves for any
+                    // channel whether or not the artist happens to be in the library.
+                    val channelId = header?.channelId ?: resolvedChannelId
+                    if (channelId.isNotBlank()) navController.navigate("artist/$channelId")
+                },
+                onSubscribeClick = { toggleSubscribe() },
+            )
+        }
+
+        item(
+            key = "tabs",
+            span = { GridItemSpan(maxLineSpan) },
+        ) {
+            ChannelTabBar(
+                selectedTab = selectedTab,
+                onSelect = { selectedTab = it },
+                onBack = { navController.navigateUp() },
+                listView = channelListView,
+                onToggleView = { channelListView = !channelListView },
+            )
+        }
+
+        when (ChannelTab.entries[selectedTab]) {
+            ChannelTab.About -> {
+                item(
+                    key = "about",
+                    span = { GridItemSpan(maxLineSpan) },
+                ) {
+                    ChannelAboutSection(header = header)
+                }
+            }
+            ChannelTab.Posts -> {
+                if (isLoading && posts.isEmpty()) {
+                    item(
+                        key = "posts_loading",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        }
+                    }
+                } else if (error != null && posts.isEmpty()) {
+                    item(
+                        key = "posts_error",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        ChannelErrorState(message = error.orEmpty())
+                    }
+                } else if (posts.isEmpty()) {
+                    item(
+                        key = "posts_empty",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        ChannelErrorState(message = stringResource(R.string.no_posts_found))
+                    }
+                } else {
+                    items(
+                        count = posts.size,
+                        key = { "post_${posts[it].postId}" },
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) { index ->
+                        ChannelPostCard(post = posts[index])
+                    }
+                    if (isLoadingMore) {
+                        item(
+                            key = "posts_loading_more",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {
+                if (isLoading && videos.isEmpty()) {
+                    items(count = 4, key = { "skeleton_$it" }, span = { GridItemSpan(1) }) {
+                        ChannelVideoSkeleton()
+                    }
+                } else if (error != null && videos.isEmpty()) {
+                    item(
+                        key = "error",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        ChannelErrorState(message = error.orEmpty())
+                    }
+                } else if (videos.isEmpty()) {
+                    item(
+                        key = "empty",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        ChannelErrorState(message = stringResource(R.string.no_videos_found))
+                    }
+                } else if (isShorts) {
+                    items(
+                        count = videos.size,
+                        key = { "short_${videos[it].videoId}" },
+                        span = { GridItemSpan(1) },
+                    ) { index ->
+                        val video = videos[index]
+                        ChannelShortsCard(
+                            video = video,
+                            onClick = {
+                                shortsPagerIndex = index
+                            },
+                        )
+                    }
+                    if (isLoadingMore) {
+                        item(
+                            key = "loading_more",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            }
+                        }
+                    }
+                } else {
+                    val playVideo: (YouTubeVideoItem) -> Unit = { video ->
+                        VideoPlaybackManager.playWithDetails(
+                            context = context,
+                            videoId = video.videoId,
+                            title = video.title,
+                            channelName = video.channelName.ifBlank { header?.title.orEmpty() },
+                            channelId = video.channelId ?: header?.channelId,
+                            channelThumbnail = header?.avatarUrl,
+                            description = video.description,
+                            viewCountText = video.viewCountText,
+                            publishedTimeText = video.publishedTimeText,
+                            thumbnails = video.thumbnails,
+                            channels = video.channels,
+                        )
+                    }
+                    if (channelListView) {
+                        items(
+                            count = videos.size,
+                            key = { "video_${videos[it].videoId}" },
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) { index ->
+                            val video = videos[index]
+                            ChannelVideoRow(video = video, onClick = { playVideo(video) })
+                        }
+                    } else {
+                        // Grid: the same run of videos, tiled. YouTube's channel API no
+                        // longer returns shelves or section titles for a channel (verified
+                        // live: a flat list of items, zero shelf renderers), so the layout
+                        // is the only grouping available - grid or list, nothing invented.
+                        items(
+                            count = videos.size,
+                            key = { "video_${videos[it].videoId}" },
+                        ) { index ->
+                            val video = videos[index]
+                            ChannelVideoGridCard(video = video, onClick = { playVideo(video) })
+                        }
+                    }
+                    if (isLoadingMore) {
+                        item(
+                            key = "loading_more",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+
+        if (shortsPagerIndex >= 0 && videos.isNotEmpty()) {
+            ShortsVerticalPager(
+                shorts = videos,
+                startIndex = shortsPagerIndex,
+                channelTitle = header?.title,
+                channelAvatarUrl = header?.avatarUrl,
+                onClose = {
+                    shortsPagerIndex = -1
+                    VideoPlaybackManager.collapse()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChannelHeaderSection(
+    header: ChannelHeader?,
+    isLoading: Boolean,
+    isSubscribed: Boolean,
+    isSubscribing: Boolean,
+    subscribeError: String?,
+    onOpenArtist: () -> Unit,
+    onSubscribeClick: () -> Unit,
+) {
+    Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                // Channel art is far wider than it is tall; 150dp forced the middle
+                // slice out of a banner that then read as a cropped, too-small image.
+                .height(220.dp),
+        ) {
+            if (header?.bannerUrl != null) {
+                AsyncImage(
+                    model = header.bannerUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.25f), MaterialTheme.colorScheme.background),
+                            ),
+                        ),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                    MaterialTheme.colorScheme.background,
+                                )
+                            )
+                        ),
+                )
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(84.dp)
+                    .offset(y = (-26).dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val avatar = header?.avatarUrl
+                    if (avatar != null) {
+                        AsyncImage(
+                            model = avatar,
+                            contentDescription = header.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Text(
+                            text = header?.title?.trim()?.firstOrNull()?.uppercase() ?: "?",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (isLoading && header == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .shimmer()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.4f)
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .shimmer()
+            )
+        } else {
+            Text(
+                text = header?.title.orEmpty().ifBlank { stringResource(R.string.app_name) },
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(top = 6.dp),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                listOfNotNull(
+                    header?.subscriberCountText,
+                    header?.videosCountText,
+                ).forEach { stat ->
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        ) {
+                            Text(
+                                text = stat,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            // Subscribe and the jump to the artist side sit together: they were siblings
+            // in the column, which put the second one on its own line below.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+            Surface(
+                onClick = onSubscribeClick,
+                enabled = !isSubscribing,
+                shape = RoundedCornerShape(22.dp),
+                color = if (isSubscribed) MaterialTheme.colorScheme.surfaceContainerHighest
+                else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.height(38.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                ) {
+                    if (isSubscribing) {
+                        CircularProgressIndicator(
+                            color = if (isSubscribed) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(if (isSubscribed) R.drawable.subscribed else R.drawable.subscribe),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isSubscribed) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(if (isSubscribed) R.string.subscribed else R.string.subscribe),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isSubscribed) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+            // The same artist on the music side, one tap away. Not conditional on the
+            // library: the artist page opens straight from this channel's id.
+                Surface(
+                    onClick = onOpenArtist,
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.height(38.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                    ) {
+                        Icon(
+                            // A person, to match the artist it opens.
+                            painter = painterResource(R.drawable.person),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.open_artist),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+
+            // A rejected subscribe used to look like a dead button: nothing moved and
+            // nothing was said. This names the reason instead.
+            subscribeError?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChannelTabBar(
+    selectedTab: Int,
+    onSelect: (Int) -> Unit,
+    onBack: () -> Unit,
+    listView: Boolean,
+    onToggleView: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // The back affordance used to float on top of the channel art and covered the
+        // picture; it lives in this row instead, where nothing is hidden by it.
+        IconButton(onClick = onBack) {
+            Icon(
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = stringResource(R.string.dismiss),
+            )
+        }
+        Box(modifier = Modifier.weight(1f)) {
+    SecondaryScrollableTabRow(
+        selectedTabIndex = selectedTab,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.primary,
+        edgePadding = 4.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        ChannelTab.entries.forEach { tab ->
+            Tab(
+                selected = selectedTab == tab.ordinal,
+                onClick = { onSelect(tab.ordinal) },
+                text = {
+                    Text(
+                        text = stringResource(tab.labelRes),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (selectedTab == tab.ordinal) FontWeight.Bold else FontWeight.Normal,
+                        color = if (selectedTab == tab.ordinal) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+            )
+        }
+        }
+        }
+        // Grid or list: the channel feed is a flat run of videos, and a list reads far
+        // better for the titles and metadata than a two-column grid does.
+        IconButton(onClick = onToggleView) {
+            Icon(
+                painter = painterResource(
+                    if (listView) R.drawable.grid_view else R.drawable.view_list,
+                ),
+                contentDescription = stringResource(
+                    if (listView) R.string.videos_grid_view else R.string.videos_list_view,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChannelAboutSection(header: ChannelHeader?) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val about = listOfNotNull(
+            header?.description?.takeIf { it.isNotBlank() },
+            header?.subscriberCountText,
+            header?.videosCountText,
+        )
+        if (about.isEmpty()) {
+            Text(
+                text = stringResource(R.string.channel_no_about),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            )
+        } else {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = "About",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = linkifiedText(header?.description.orEmpty()),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (header?.subscriberCountText != null) {
+                        Text(
+                            text = header.subscriberCountText.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        )
+                    }
+                    if (header?.videosCountText != null) {
+                        Text(
+                            text = header.videosCountText.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelVideoGridCard(
+    video: YouTubeVideoItem,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        ThumbnailWithBadge(
+            thumbnailUrl = video.thumbnails.maxByOrNull { it.width ?: 0 }?.url
+                ?: VideoThumbnails.highQuality(video.videoId),
+            durationText = video.durationText,
+            isLive = video.isLive,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp)),
+        )
+        MarqueeTitle(
+            text = video.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        val meta = listOfNotNull(video.viewCountText, video.publishedTimeText)
+            .joinToString(" \u00b7 ")
+            .takeIf { it.isNotBlank() }
+        if (meta != null) {
+            Text(
+                text = meta,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChannelVideoRow(
+    video: YouTubeVideoItem,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        ThumbnailWithBadge(
+            thumbnailUrl = video.thumbnails.maxByOrNull { it.width ?: 0 }?.url
+                ?: VideoThumbnails.highQuality(video.videoId),
+            durationText = video.durationText,
+            isLive = video.isLive,
+            modifier = Modifier
+                .width(160.dp)
+                .aspectRatio(16f / 9f),
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = video.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = listOfNotNull(
+                    video.viewCountText?.let { compactViewCount(it) },
+                    video.publishedTimeText,
+                ).joinToString(" • "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChannelShortsCard(
+    video: YouTubeVideoItem,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(9f / 16f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        ) {
+            AsyncImage(
+                model = video.thumbnails.maxByOrNull { it.width ?: 0 }?.url
+                    ?: VideoThumbnails.highQuality(video.videoId),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            video.durationText?.let {
+                TextBadge(
+                    text = it,
+                    containerColor = Color.Black.copy(alpha = 0.78f),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp),
+                )
+            }
+        }
+        Text(
+            text = video.title,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+        )
+        Text(
+            text = video.viewCountText?.let { compactViewCount(it) }.orEmpty(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun ChannelPostCard(post: YouTubeChannelPost) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(
+                model = post.authorThumbnail,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop,
+            )
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = post.authorName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                post.publishedTimeText?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        if (post.contentText.isNotBlank()) {
+            Text(
+                text = post.contentText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+        if (post.imageUrls.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            if (post.imageUrls.size == 1) {
+                AsyncImage(
+                    model = post.imageUrls.first(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(10.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    post.imageUrls.chunked(2).forEach { rowUrls ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            rowUrls.forEach { url ->
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(10.dp)),
+                                    contentScale = ContentScale.Crop,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (post.voteCountText != null || post.commentCountText != null) {
+            Row(
+                modifier = Modifier.padding(top = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                if (post.voteCountText != null) {
+                    val voteCountText = post.voteCountText.orEmpty()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_thumb_up),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = voteCountText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (post.commentCountText != null) {
+                    val commentCountText = post.commentCountText.orEmpty()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_comment),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = commentCountText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelVideoSkeleton() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(160.dp)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .shimmer(),
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .shimmer(),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.5f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .shimmer(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChannelErrorState(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 40.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+        )
+    }
+}
+
+@Composable
+private fun ThumbnailWithBadge(
+    thumbnailUrl: String,
+    durationText: String?,
+    isLive: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        AsyncImage(
+            model = thumbnailUrl,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+        when {
+            isLive -> TextBadge(
+                text = "LIVE",
+                containerColor = Color(0xFFE53935),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp),
+            )
+            durationText != null -> TextBadge(
+                text = durationText,
+                containerColor = Color.Black.copy(alpha = 0.78f),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TextBadge(
+    text: String,
+    containerColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(containerColor)
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+private data class ChannelHeader(
+    val channelId: String,
+    val title: String,
+    val avatarUrl: String?,
+    val bannerUrl: String?,
+    val subscriberCountText: String?,
+    val videosCountText: String?,
+    val description: String?,
+)
+
+/** Accepts raw UC ids, @handles, /c/ and /user/ URLs. */
+internal fun extractChannelId(raw: String): String {
+     val decoded = URLDecoder.decode(raw, "UTF-8")
+     val clean = decoded.substringBefore("?")
+     return when {
+         clean.startsWith("UC") -> clean
+         clean.startsWith("@") -> clean
+         clean.contains("/channel/") -> clean.substringAfter("/channel/")
+         clean.contains("/@") -> "@" + clean.substringAfter("/@").substringBefore("/")
+         clean.contains("/c/") -> clean.substringAfter("/c/").substringBefore("/")
+         clean.contains("/user/") -> clean.substringAfter("/user/").substringBefore("/")
+         else -> clean
+     }
+ }

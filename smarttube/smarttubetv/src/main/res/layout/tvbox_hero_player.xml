@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    TV Box build: muted video in the home hero (TvBoxHeroPreview). texture_view (not the default
+    SurfaceView) so the video sits in the normal view layers: it fades in/out, blends under the
+    hero fades and the artwork, and shows up in screenshots. Low-res preview, so TextureView is cheap.
+-->
+<com.liskovsoft.smartyoutubetv2.tv.ui.widgets.embedplayer.EmbedPlayerView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:focusable="false"
+    app:surface_type="texture_view"
+    app:use_controller="false"
+    app:resize_mode="zoom"
+    app:shutter_background_color="#00000000" />

@@ -1,0 +1,139 @@
+/**
+ * Auramusic Project (C) 2026
+ * Licensed under GPL-3.0 | See git history for contributors
+ */
+
+package com.auramusic.app.ui.component
+
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import com.auramusic.app.ui.screens.Screens
+
+@Immutable
+private data class NavItemState(
+    val isSelected: Boolean,
+    val iconRes: Int
+)
+
+@Stable
+private fun isRouteSelected(currentRoute: String?, screenRoute: String, navigationItems: List<Screens>): Boolean {
+    if (currentRoute == null) return false
+    if (currentRoute == screenRoute) return true
+    return navigationItems.any { it.route == screenRoute } && 
+           currentRoute.startsWith("$screenRoute/")
+}
+
+@Composable
+fun AppNavigationRail(
+    navigationItems: List<Screens>,
+    currentRoute: String?,
+    onItemClick: (Screens, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    pureBlack: Boolean = false,
+) {
+    val containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
+    
+    // The rail stacks its items from the top, which put the navigation in the corner
+    // instead of halfway down the side. Centring is done here rather than left to the
+    // rail, because the rail gives no way to say so.
+    NavigationRail(
+        modifier = modifier.fillMaxHeight(),
+        containerColor = containerColor,
+    ) {
+        // weight, not fillMaxWidth: filling the available width made the rail's own
+        // width follow it, so the whole control sat in the middle of the screen instead
+        // of hugging the edge.
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+        navigationItems.forEach { screen ->
+            val isSelected = remember(currentRoute, screen.route) {
+                isRouteSelected(currentRoute, screen.route, navigationItems)
+            }
+            val iconRes = remember(isSelected, screen) {
+                if (isSelected) screen.iconIdActive else screen.iconIdInactive
+            }
+            
+            NavigationRailItem(
+                selected = isSelected,
+                onClick = { onItemClick(screen, isSelected) },
+                icon = {
+                    Icon(
+                        painter = painterResource(id = iconRes),
+                        contentDescription = stringResource(screen.titleId)
+                    )
+                }
+            )
+        }
+        }
+    }
+}
+
+@Composable
+fun AppNavigationBar(
+    navigationItems: List<Screens>,
+    currentRoute: String?,
+    onItemClick: (Screens, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    pureBlack: Boolean = false,
+    slimNav: Boolean = false,
+) {
+    val containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
+    val contentColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+    
+    NavigationBar(
+        modifier = modifier,
+        containerColor = containerColor,
+        contentColor = contentColor
+    ) {
+        navigationItems.forEach { screen ->
+            val isSelected = remember(currentRoute, screen.route) {
+                isRouteSelected(currentRoute, screen.route, navigationItems)
+            }
+            val iconRes = remember(isSelected, screen) {
+                if (isSelected) screen.iconIdActive else screen.iconIdInactive
+            }
+            
+            NavigationBarItem(
+                selected = isSelected,
+                onClick = { onItemClick(screen, isSelected) },
+                icon = {
+                    Icon(
+                        painter = painterResource(id = iconRes),
+                        contentDescription = stringResource(screen.titleId)
+                    )
+                },
+                label = if (!slimNav) {
+                    {
+                        Text(
+                            text = stringResource(screen.titleId),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else null
+            )
+        }
+    }
+}

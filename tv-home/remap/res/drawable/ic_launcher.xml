@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp" android:height="96dp" android:viewportWidth="96" android:viewportHeight="96">
+    <path android:fillColor="#FF2B5CE6" android:pathData="M20,0h56a20,20 0 0 1 20,20v56a20,20 0 0 1 -20,20h-56a20,20 0 0 1 -20,-20v-56a20,20 0 0 1 20,-20z"/>
+    <!-- remote -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M30,16h22a8,8 0 0 1 8,8v48a8,8 0 0 1 -8,8h-22a8,8 0 0 1 -8,-8v-48a8,8 0 0 1 8,-8z"/>
+    <path android:fillColor="#FF2B5CE6" android:pathData="M41,26m-7,0a7,7 0 1 0 14,0a7,7 0 1 0 -14,0"/>
+    <path android:fillColor="#FFFF6A3D" android:pathData="M41,46m-4,0a4,4 0 1 0 8,0a4,4 0 1 0 -8,0"/>
+    <path android:fillColor="#FF2B5CE6" android:pathData="M33,58h16v4h-16zM33,66h16v4h-16z"/>
+    <!-- arrow -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M64,44h12v-8l12,12l-12,12v-8h-12z"/>
+</vector>

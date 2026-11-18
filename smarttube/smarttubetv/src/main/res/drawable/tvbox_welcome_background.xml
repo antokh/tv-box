@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Welcome / sign-in page: navy on the left, soft pink and violet light on the right (behind the QR code). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:type="linear" android:angle="0" android:startColor="#0E141B" android:centerColor="#1A1430" android:endColor="#3A1840" />
+        </shape>
+    </item>
+    <item android:gravity="end|center_vertical" android:width="760dp" android:height="760dp" android:right="-140dp">
+        <shape android:shape="oval">
+            <gradient android:type="radial" android:gradientRadius="380dp" android:startColor="#B3FF3D5A" android:centerColor="#40C2306B" android:endColor="#00FF3D5A" />
+        </shape>
+    </item>
+    <item android:gravity="end|bottom" android:width="620dp" android:height="620dp" android:right="-60dp" android:bottom="-260dp">
+        <shape android:shape="oval">
+            <gradient android:type="radial" android:gradientRadius="310dp" android:startColor="#997B3FE4" android:endColor="#007B3FE4" />
+        </shape>
+    </item>
+    <item android:gravity="end|top" android:width="520dp" android:height="520dp" android:right="260dp" android:top="-240dp">
+        <shape android:shape="oval">
+            <gradient android:type="radial" android:gradientRadius="260dp" android:startColor="#66E0457B" android:endColor="#00E0457B" />
+        </shape>
+    </item>
+</layer-list>

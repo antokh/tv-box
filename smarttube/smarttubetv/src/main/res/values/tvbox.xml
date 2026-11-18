@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    TV Box look: dark glass over a blurred copy of the focused video, white focus rings,
+    rounded thumbnails, no coloured card panels. Matches the tv-home launcher and the
+    redesigned YouTube Music (AuraMusic) app. Selected as the "TV Box" colour scheme
+    (the default in this build).
+-->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- true = video cards are drawn the TV Box way and the home screen gets the ambient backdrop. -->
+    <attr name="tvBoxStyle" format="boolean"/>
+
+    <color name="tvbox_base">#0E141B</color>
+    <color name="tvbox_sidebar">#E60E141B</color>
+    <color name="tvbox_glass">#33FFFFFF</color>
+    <color name="tvbox_glass_bright">#59FFFFFF</color>
+    <color name="tvbox_focus">#FFFFFF</color>
+    <color name="tvbox_accent">#FF3D5A</color>
+    <color name="tvbox_on_focus">#111111</color>
+    <color name="tvbox_text_secondary">#9EFFFFFF</color>
+    <color name="tvbox_transparent">#00000000</color>
+    <color name="tvbox_panel">#FF141418</color>
+    <!-- Side-panel background (leanback colour; overrides it for every scheme in this build). -->
+    <color name="lb_preference_decor_list_background">#FF141418</color>
+
+    <dimen name="tvbox_card_corner">14dp</dimen>
+    <!-- Settings page: 3 columns of wide rows that fit under the top tabs. -->
+    <dimen name="tvbox_settings_tile_width">272dp</dimen>
+    <dimen name="tvbox_settings_tile_height">72dp</dimen>
+
+    <item type="id" name="action_more" />
+    <string name="tvbox_more_options">More options</string>
+    <string name="tvbox_search">Search</string>
+    <string name="tvbox_sign_in">Sign in</string>
+    <!-- Welcome / sign-in page (TvBoxSignInFragment) -->
+    <string name="tvbox_welcome_title">Welcome</string>
+    <string name="tvbox_signin_title">Sign in</string>
+    <string name="tvbox_welcome_subtitle">Sign in to see your subscriptions, history and recommendations.</string>
+    <string name="tvbox_welcome_phone">Sign in with your phone</string>
+    <string name="tvbox_welcome_tv">Sign in on this TV</string>
+    <string name="tvbox_welcome_guest">Watch as guest</string>
+    <string name="tvbox_welcome_not_now">Not now</string>
+    <string name="tvbox_welcome_scan">Scan the QR code or go to</string>
+    <string name="tvbox_welcome_enter_code">Enter the code</string>
+    <string name="tvbox_welcome_loading">Getting a code…</string>
+    <string name="tvbox_welcome_code_expired">No code right now.\nSelect “Sign in with your phone” to try again.</string>
+    <string name="tvbox_signin_description">On your phone or computer, go to %s and type this code. Or scan the square with your phone camera.</string>
+    <!-- Slimmer left menu (stock leanback: 270dp). Applies to every colour scheme in this build. -->
+    <dimen name="lb_browse_headers_width">232dp</dimen>
+
+    <style name="TvBox.ProgressBar" parent="@android:style/Widget.ProgressBar.Horizontal">
+        <item name="android:progressDrawable">@drawable/tvbox_card_progress</item>
+    </style>
+
+    <!-- Row titles ("Recommended", "Subscriptions"...): white, medium weight, a bit bigger. -->
+    <style name="TvBox.RowHeader" parent="Widget.Leanback.Row.Header">
+        <item name="android:textColor">@color/tvbox_focus</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">22sp</item>
+    </style>
+
+    <!-- Screen-to-screen motion (the stock themes switch animations off). -->
+    <style name="TvBox.WindowAnimation" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/tvbox_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/tvbox_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/tvbox_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/tvbox_close_exit</item>
+        <item name="android:taskOpenEnterAnimation">@anim/tvbox_open_enter</item>
+        <item name="android:taskOpenExitAnimation">@anim/tvbox_open_exit</item>
+        <item name="android:taskCloseEnterAnimation">@anim/tvbox_close_enter</item>
+        <item name="android:taskCloseExitAnimation">@anim/tvbox_close_exit</item>
+    </style>
+
+    <style name="App.Theme.TvBox.Player" parent="App.Theme.DarkGrey.Player">
+        <item name="tvBoxStyle">true</item>
+        <item name="android:windowAnimationStyle">@style/TvBox.WindowAnimation</item>
+        <item name="android:windowBackground">@color/tvbox_base</item>
+        <item name="playbackProgressPrimaryColor">@color/tvbox_focus</item>
+        <item name="playbackProgressSecondaryColor">@color/tvbox_glass_bright</item>
+        <item name="playbackControlsIconHighlightColor">@color/tvbox_focus</item>
+        <item name="cardProgressStyle">@style/TvBox.ProgressBar</item>
+        <item name="shelfBackground">@color/tvbox_base</item>
+        <item name="cardDefaultBackground">@color/tvbox_transparent</item>
+        <item name="cardSelectedBackground">@color/card_selected_background_white</item>
+        <item name="rowHeaderStyle">@style/TvBox.RowHeader</item>
+        <item name="android:colorAccent" tools:targetApi="21">@color/tvbox_accent</item>
+    </style>
+
+    <style name="App.Theme.TvBox.Browse" parent="App.Theme.DarkGrey.Browse">
+        <item name="tvBoxStyle">true</item>
+        <item name="android:windowAnimationStyle">@style/TvBox.WindowAnimation</item>
+        <item name="android:windowBackground">@color/tvbox_base</item>
+        <item name="brandColor">@color/tvbox_sidebar</item>
+        <!-- Rows start right of the icon rail (Prime Video-like). -->
+        <item name="browsePaddingStart">72dp</item>
+        <item name="brandAccentColor">@color/tvbox_glass</item>
+        <item name="cardProgressStyle">@style/TvBox.ProgressBar</item>
+        <item name="shelfBackground">@color/tvbox_base</item>
+        <item name="cardDefaultBackground">@color/tvbox_transparent</item>
+        <item name="cardSelectedBackground">@color/card_selected_background_white</item>
+        <item name="rowHeaderStyle">@style/TvBox.RowHeader</item>
+        <item name="appLogo">@null</item>
+        <item name="android:colorAccent" tools:targetApi="21">@color/tvbox_accent</item>
+    </style>
+
+    <!-- Sign-in page (GuidedStep): navy page, actions on the right as white/frosted pills. -->
+    <style name="TvBox.GuidedStep" parent="Theme.Leanback.GuidedStep">
+        <item name="guidedStepBackground">@color/tvbox_base</item>
+        <item name="guidedActionsBackground">@color/tvbox_base</item>
+        <item name="guidedActionsBackgroundDark">@color/tvbox_base</item>
+        <item name="guidedActionsSelectorDrawable">@android:color/transparent</item>
+        <item name="guidedStepKeyline">62</item>
+        <item name="android:windowAnimationStyle">@style/TvBox.WindowAnimation</item>
+    </style>
+
+    <!-- Welcome / sign-in page option rows (tvbox_signin_welcome.xml). -->
+    <style name="TvBox.WelcomeOption" parent="">
+        <item name="android:layout_width">340dp</item>
+        <item name="android:layout_height">54dp</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">18dp</item>
+        <item name="android:paddingEnd">18dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+        <item name="android:background">@drawable/tvbox_welcome_option</item>
+        <item name="android:stateListAnimator">@animator/tvbox_tab_scale</item>
+        <item name="android:transformPivotX">0dp</item>
+    </style>
+    <style name="TvBox.WelcomeOptionIcon" parent="">
+        <item name="android:layout_width">24dp</item>
+        <item name="android:layout_height">24dp</item>
+        <item name="android:duplicateParentState">true</item>
+        <item name="android:tint">@color/tvbox_welcome_option_content</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+    <style name="TvBox.WelcomeOptionText" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">16dp</item>
+        <item name="android:duplicateParentState">true</item>
+        <item name="android:textColor">@color/tvbox_welcome_option_content</item>
+        <item name="android:textSize">19sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <!-- Side panels and dialogs (player "More options", quality, speed, settings...). -->
+    <style name="App.Theme.TvBox.Preferences" parent="App.Theme.DarkGrey.Preferences">
+        <item name="android:colorAccent" tools:targetApi="21">@color/tvbox_accent</item>
+        <!-- Title area takes the panel's own (rounded) background. -->
+        <item name="defaultBrandColor">@color/tvbox_transparent</item>
+        <!-- Dim the screen behind the panel. -->
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.55</item>
+        <item name="android:selectableItemBackground">@drawable/tvbox_dialog_item</item>
+    </style>
+</resources>

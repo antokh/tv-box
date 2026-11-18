@@ -1,0 +1,19 @@
+# Xiaomi Mi Box S (1st gen), MIBOX4 "oneday", Android TV 9 (armeabi-v7a)
+# Same choices as ../xiaomi-tv-box-s-3rd-gen/debloat.txt, limited to packages that exist on this box.
+# Not on this box: com.xiaomi.statistic, com.mitv.tvhome.mitvplus, com.mitv.tvhome.oemtab, com.android.adservices.api
+# Apply: bash tv-home/tools/debloat-mac.sh tv-home/examples/mi-box-s-mibox4/debloat.txt   Undo: add --restore
+# Everything is DISABLED for user 0, never uninstalled.
+
+# Xiaomi telemetry, ads and promos
+com.miui.tv.analytics                          # Xiaomi analytics
+com.mitv.tvhome.michannel                      # Xiaomi content/promo channel feed
+com.xm.webcontent                              # Xiaomi web content / promotions
+com.xiaomi.android.tvsetup.partnercustomizer   # partner app and channel promos
+
+# Google extras
+com.google.android.feedback                    # feedback / crash reporter
+com.google.android.play.games                  # Play Games
+com.android.printspooler                       # printing
+com.google.android.marvin.talkback             # TalkBack screen reader
+com.google.android.katniss                     # Google Assistant / voice search (remote mic button)
+com.google.android.tts                         # text-to-speech

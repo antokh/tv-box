@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round frosted badge behind a settings icon; faint dark disc when the tile is focused (white). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:enterFadeDuration="160" android:exitFadeDuration="160">
+    <item android:state_focused="true">
+        <shape android:shape="oval"><solid android:color="#14000000" /></shape>
+    </item>
+    <item>
+        <shape android:shape="oval"><solid android:color="#1FFFFFFF" /></shape>
+    </item>
+</selector>

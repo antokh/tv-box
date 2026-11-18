@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Focus "pop": the focused control grows smoothly, shrinks back when focus leaves. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <set>
+            <objectAnimator android:propertyName="scaleX" android:valueTo="1.16" android:duration="180"
+                android:interpolator="@android:interpolator/decelerate_cubic" />
+            <objectAnimator android:propertyName="scaleY" android:valueTo="1.16" android:duration="180"
+                android:interpolator="@android:interpolator/decelerate_cubic" />
+        </set>
+    </item>
+    <item>
+        <set>
+            <objectAnimator android:propertyName="scaleX" android:valueTo="1" android:duration="160"
+                android:interpolator="@android:interpolator/decelerate_cubic" />
+            <objectAnimator android:propertyName="scaleY" android:valueTo="1" android:duration="160"
+                android:interpolator="@android:interpolator/decelerate_cubic" />
+        </set>
+    </item>
+</selector>
